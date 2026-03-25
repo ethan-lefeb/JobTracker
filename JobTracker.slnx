@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="JobTracker/JobTracker.csproj" />
+  <Project Path="JobTrackerGUI/JobTrackerGUI.csproj" Id="9b11ee9b-5e0c-4ccd-89ef-c05877c35231" />
 </Solution>
