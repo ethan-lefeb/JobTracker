@@ -68,4 +68,42 @@ public class ApplicationService
         _db.Contacts.Add(contact);
         _db.SaveChanges();
     }
+
+    public void DeleteNote(int noteId)
+    {
+        var note = _db.Notes.Find(noteId);
+        if (note == null) return;
+
+        _db.Notes.Remove(note);
+        _db.SaveChanges();
+    }
+
+    public void UpdateNote(int noteId, string content)
+    {
+        var note = _db.Notes.Find(noteId);
+        if (note == null) return;
+
+        note.Content = content;
+        _db.SaveChanges();
+    }
+
+    public void DeleteContact(int contactId)
+    {
+        var contact = _db.Contacts.Find(contactId);
+        if (contact == null) return;
+
+        _db.Contacts.Remove(contact);
+        _db.SaveChanges();
+    }
+
+    public void UpdateContact(int contactId, string name, string role, string? email)
+    {
+        var contact = _db.Contacts.Find(contactId);
+        if (contact == null) return;
+
+        contact.Name = name;
+        contact.Role = role;
+        contact.Email = email;
+        _db.SaveChanges();
+    }
 }

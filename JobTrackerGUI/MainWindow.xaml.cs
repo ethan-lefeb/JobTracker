@@ -5,8 +5,6 @@ using System.Windows;
 using JobTracker.Data;
 using JobTracker.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.VisualBasic;
-
 using AppModel = JobTracker.Models.Application;
 
 namespace JobTrackerGUI
@@ -14,6 +12,7 @@ namespace JobTrackerGUI
     public partial class MainWindow : Window
     {
         private readonly ApplicationService _service;
+        private AppModel? _selectedApplication;
         private List<AppModel> _applications = new();
 
         public MainWindow()
@@ -27,75 +26,122 @@ namespace JobTrackerGUI
 
             _service = new ApplicationService(db);
 
+            StatusEditor.ItemsSource = Enum.GetValues(typeof(JobTracker.Models.ApplicationStatus));
+
             LoadApplications();
         }
 
         private void LoadApplications()
         {
+            var selectedApp = ApplicationsList.SelectedItem as AppModel;
+
             _applications = _service.GetAllApplications();
 
-            ApplicationsList.ItemsSource = _applications.Select(a => new
-            {
-                a.Id,
-                DisplayName = $"{a.Company} - {a.PositionTitle} ({a.Status})"
-            }).ToList();
+            ApplicationsList.ItemsSource = _applications;
 
-            NotesList.ItemsSource = null;
-            ContactsList.ItemsSource = null;
+            if (selectedApp != null)
+            {
+                var restored = _applications.FirstOrDefault(a => a.Id == selectedApp.Id);
+                ApplicationsList.SelectedItem = restored;
+            }
+
+            if (ApplicationsList.SelectedItem == null)
+            {
+                _selectedApplication = null;
+                StatusEditor.SelectedItem = null;
+                NotesList.ItemsSource = null;
+                ContactsList.ItemsSource = null;
+            }
+        }
+
+        private AppModel? GetSelectedApplication()
+        {
+            return ApplicationsList.SelectedItem as AppModel;
+        }
+
+        private void StatusEditor_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (_selectedApplication == null || StatusEditor.SelectedItem == null)
+                return;
+
+            var newStatus = (JobTracker.Models.ApplicationStatus)StatusEditor.SelectedItem;
+            if (_selectedApplication.Status == newStatus)
+                return;
+
+            _service.UpdateStatus(_selectedApplication.Id, newStatus);
+            LoadApplications();
         }
 
         private void ApplicationsList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            if (ApplicationsList.SelectedIndex < 0) return;
+            if (ApplicationsList.SelectedItem is not AppModel app)
+                return;
 
-            var selectedId = _applications[ApplicationsList.SelectedIndex].Id;
-            var app = _applications.First(a => a.Id == selectedId);
+            _selectedApplication = app;
 
-            NotesList.ItemsSource = app.Notes.Select(n => $"{n.CreatedAt:g}: {n.Content}").ToList();
-            ContactsList.ItemsSource = app.Contacts.Select(c => $"{c.Name} ({c.Role}) {c.Email}").ToList();
+            StatusEditor.SelectionChanged -= StatusEditor_SelectionChanged;
+            StatusEditor.SelectedItem = app.Status;
+            StatusEditor.SelectionChanged += StatusEditor_SelectionChanged;
+
+            NotesList.ItemsSource = app.Notes;
+            ContactsList.ItemsSource = app.Contacts;
         }
 
         private void AddApplication_Click(object sender, RoutedEventArgs e)
         {
-            var input = Interaction.InputBox(
-                "Enter company, position, status (0:Applied,1:Interviewing,2:Offer,3:Rejected,4:Withdrawn) separated by commas:",
-                "Add Application"
-            );
+            var dialog = new AddApplicationDialog { Owner = this };
 
-            if (string.IsNullOrWhiteSpace(input)) return;
-
-            var parts = input.Split(',');
-            if (parts.Length < 3) return;
-
-            var company = parts[0].Trim();
-            var position = parts[1].Trim();
-            if (!int.TryParse(parts[2].Trim(), out int statusInt)) return;
-
-            _service.AddApplication(company, position, (JobTracker.Models.ApplicationStatus)statusInt);
-            LoadApplications();
+            if (dialog.ShowDialog() == true)
+            {
+                _service.AddApplication(dialog.Company, dialog.Position, dialog.SelectedStatus);
+                LoadApplications();
+            }
         }
 
         private void AddNote_Click(object sender, RoutedEventArgs e)
         {
-            if (ApplicationsList.SelectedIndex < 0) return;
+            var app = GetSelectedApplication();
+            if (app == null) return;
 
-            var appId = _applications[ApplicationsList.SelectedIndex].Id;
-            var note = Interaction.InputBox("Enter note content:", "Add Note");
+            var note = Microsoft.VisualBasic.Interaction.InputBox("Enter note content:", "Add Note");
             if (string.IsNullOrWhiteSpace(note)) return;
 
-            _service.AddNote(appId, note);
+            _service.AddNote(app.Id, note);
             LoadApplications();
+        }
+
+        private void EditNote_Click(object sender, RoutedEventArgs e)
+        {
+            var note = (sender as System.Windows.Controls.MenuItem)?.CommandParameter as JobTracker.Models.Note;
+            if (_selectedApplication == null || note == null) return;
+
+            var input = Microsoft.VisualBasic.Interaction.InputBox("Edit note content:", "Edit Note", note.Content);
+            if (string.IsNullOrWhiteSpace(input)) return;
+
+            _service.UpdateNote(note.Id, input);
+            LoadApplications();
+        }
+
+        private void DeleteNote_Click(object sender, RoutedEventArgs e)
+        {
+            var note = (sender as System.Windows.Controls.MenuItem)?.CommandParameter as JobTracker.Models.Note;
+            if (_selectedApplication == null || note == null) return;
+
+            if (MessageBox.Show("Delete this note?", "Confirm Delete", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            {
+                _service.DeleteNote(note.Id);
+                LoadApplications();
+            }
         }
 
         private void AddContact_Click(object sender, RoutedEventArgs e)
         {
-            if (ApplicationsList.SelectedIndex < 0) return;
+            var app = GetSelectedApplication();
+            if (app == null) return;
 
-            var appId = _applications[ApplicationsList.SelectedIndex].Id;
-            var input = Interaction.InputBox(
+            var input = Microsoft.VisualBasic.Interaction.InputBox(
                 "Enter contact name, role, email (optional) separated by commas:",
-                "Add Contact"
-            );
+                "Add Contact");
 
             if (string.IsNullOrWhiteSpace(input)) return;
 
@@ -106,8 +152,43 @@ namespace JobTrackerGUI
             var role = parts[1].Trim();
             var email = parts.Length >= 3 ? parts[2].Trim() : null;
 
-            _service.AddContact(appId, name, role, string.IsNullOrWhiteSpace(email) ? null : email);
+            _service.AddContact(app.Id, name, role, string.IsNullOrWhiteSpace(email) ? null : email);
             LoadApplications();
+        }
+
+        private void EditContact_Click(object sender, RoutedEventArgs e)
+        {
+            var contact = (sender as System.Windows.Controls.MenuItem)?.CommandParameter as JobTracker.Models.Contact;
+            if (_selectedApplication == null || contact == null) return;
+
+            var input = Microsoft.VisualBasic.Interaction.InputBox(
+                "Edit contact (format: Name,Role,Email):",
+                "Edit Contact",
+                $"{contact.Name},{contact.Role},{contact.Email}");
+
+            if (string.IsNullOrWhiteSpace(input)) return;
+
+            var parts = input.Split(',');
+            if (parts.Length < 2) return;
+
+            var name = parts[0].Trim();
+            var role = parts[1].Trim();
+            var email = parts.Length >= 3 ? parts[2].Trim() : null;
+
+            _service.UpdateContact(contact.Id, name, role, email);
+            LoadApplications();
+        }
+
+        private void DeleteContact_Click(object sender, RoutedEventArgs e)
+        {
+            var contact = (sender as System.Windows.Controls.MenuItem)?.CommandParameter as JobTracker.Models.Contact;
+            if (_selectedApplication == null || contact == null) return;
+
+            if (MessageBox.Show("Delete this contact?", "Confirm Delete", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            {
+                _service.DeleteContact(contact.Id);
+                LoadApplications();
+            }
         }
     }
 }
